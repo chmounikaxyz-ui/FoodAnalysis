@@ -1,0 +1,69 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-serif: var(--font-dm-sans), 'DM Sans', system-ui, sans-serif;
+
+  --color-background: oklch(0.985 0.002 120);
+  --color-foreground: oklch(0.16 0.02 120);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.16 0.02 120);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.16 0.02 120);
+  --color-primary: oklch(0.55 0.18 155);
+  --color-primary-foreground: oklch(0.99 0.005 155);
+  --color-secondary: oklch(0.95 0.02 155);
+  --color-secondary-foreground: oklch(0.25 0.05 155);
+  --color-muted: oklch(0.96 0.008 120);
+  --color-muted-foreground: oklch(0.50 0.02 120);
+  --color-accent: oklch(0.72 0.16 55);
+  --color-accent-foreground: oklch(0.22 0.04 55);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  --color-border: oklch(0.90 0.01 120);
+  --color-input: oklch(0.90 0.01 120);
+  --color-ring: oklch(0.55 0.18 155);
+  --color-chart-1: oklch(0.55 0.18 155);
+  --color-chart-2: oklch(0.72 0.16 55);
+  --color-chart-3: oklch(0.60 0.15 250);
+  --color-chart-4: oklch(0.65 0.20 30);
+  --color-chart-5: oklch(0.58 0.12 300);
+  
+  --radius-lg: 0.75rem;
+  --radius-md: calc(var(--radius-lg) - 2px);
+  --radius-sm: calc(var(--radius-lg) - 4px);
+}
+
+@layer base {
+  .dark {
+    --color-background: oklch(0.12 0.01 250);
+    --color-foreground: oklch(0.98 0.01 250);
+    --color-card: oklch(0.16 0.02 250);
+    --color-card-foreground: oklch(0.98 0.01 250);
+    --color-popover: oklch(0.16 0.02 250);
+    --color-popover-foreground: oklch(0.98 0.01 250);
+    --color-primary: oklch(0.55 0.18 155);
+    --color-primary-foreground: oklch(0.99 0.005 155);
+    --color-secondary: oklch(0.22 0.03 250);
+    --color-secondary-foreground: oklch(0.98 0.01 250);
+    --color-muted: oklch(0.22 0.03 250);
+    --color-muted-foreground: oklch(0.65 0.02 250);
+    --color-accent: oklch(0.35 0.08 155);
+    --color-accent-foreground: oklch(0.98 0.01 250);
+    --color-border: oklch(0.25 0.03 250);
+    --color-input: oklch(0.25 0.03 250);
+    --color-ring: oklch(0.55 0.18 155);
+  }
+
+  html {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+  
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+

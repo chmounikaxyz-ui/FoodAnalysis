@@ -1,0 +1,13 @@
+{
+  "name": "NutriSnap AI",
+  "description": "Smart nutrition tracking with AI-powered meal analysis and comprehensive wellness monitoring.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "AI Food Analysis",
+    "Nutrition Tracking",
+    "Recipe Sharing",
+    "AI Chatbot"
+  ]
+}
