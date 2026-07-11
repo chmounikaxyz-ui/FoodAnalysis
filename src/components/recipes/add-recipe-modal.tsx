@@ -89,6 +89,7 @@ export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
       steps: steps.filter(s => s.title.trim() !== ""),
       isCustom: true,
       tags: selectedTags.length > 0 ? selectedTags : ["My Recipe"],
+      createdBy: profile?.email || "",
     }
 
     setTimeout(() => {

@@ -30,6 +30,7 @@ export interface RecipeCardProps {
     tags: string[]
     verified: boolean
     isCustom?: boolean
+    createdBy?: string
     nutrition?: any
     steps?: any
     ingredients?: any
@@ -42,7 +43,7 @@ export interface RecipeCardProps {
 
 export function RecipeCard({ recipe, priority = false, onClick, onCommentClick }: RecipeCardProps) {
   const [hasLiked, setHasLiked] = useState(false)
-  const { savedRecipes, toggleSaveRecipe, comments } = useNutrition()
+  const { savedRecipes, toggleSaveRecipe, comments, profile } = useNutrition()
 
   const isSaved = savedRecipes.some(r => r.id.toString() === recipe.id.toString())
 
@@ -109,9 +110,15 @@ export function RecipeCard({ recipe, priority = false, onClick, onCommentClick }
 
         <div className="absolute top-2 right-2">
           {recipe.isCustom && (
-            <Badge className="bg-orange-500 text-white border-0 text-[10px] font-bold h-5 shadow-sm px-1.5 uppercase tracking-wider">
-              My Recipe
-            </Badge>
+            recipe.createdBy?.toLowerCase() === profile?.email?.toLowerCase() ? (
+              <Badge className="bg-orange-500 text-white border-0 text-[10px] font-bold h-5 shadow-sm px-1.5 uppercase tracking-wider">
+                My Recipe
+              </Badge>
+            ) : (
+              <Badge className="bg-blue-500 text-white border-0 text-[10px] font-bold h-5 shadow-sm px-1.5 uppercase tracking-wider">
+                Community
+              </Badge>
+            )
           )}
         </div>
 

@@ -21,6 +21,7 @@ interface RecipeDetailProps {
     ingredients: Array<{ amount: string; name: string }>
     steps: Array<{ title: string; description: string }>
     isCustom?: boolean
+    createdBy?: string
     openAtComments?: boolean
   }
   onClose: () => void
@@ -155,14 +156,20 @@ export function RecipeDetail({ recipe, onClose }: RecipeDetailProps) {
              <h2 className="text-base font-bold text-foreground line-clamp-1 max-w-[200px]">
                {recipe.title}
              </h2>
-             {recipe.isCustom && (
-               <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-[10px] py-0 h-5">
-                 My Recipe
-               </Badge>
-             )}
+              {recipe.isCustom && (
+                recipe.createdBy?.toLowerCase() === profile?.email?.toLowerCase() ? (
+                  <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-[10px] py-0 h-5">
+                    My Recipe
+                  </Badge>
+                ) : (
+                  <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] py-0 h-5">
+                    Community
+                  </Badge>
+                )
+              )}
           </div>
           <div className="flex items-center gap-1">
-            {recipe.isCustom && (
+            {recipe.isCustom && recipe.createdBy?.toLowerCase() === profile?.email?.toLowerCase() && (
               <Button
                 variant={showConfirmDelete ? "destructive" : "ghost"}
                 size={showConfirmDelete ? "sm" : "icon"}

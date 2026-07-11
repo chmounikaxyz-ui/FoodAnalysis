@@ -42,6 +42,7 @@ export interface Recipe {
   ingredients: Array<{ amount: string; name: string }>;
   steps: Array<{ title: string; description: string }>;
   isCustom?: boolean;
+  createdBy?: string;
 }
 
 export interface DailyStats {

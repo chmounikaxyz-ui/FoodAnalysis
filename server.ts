@@ -513,6 +513,7 @@ Return JSON only.` }
       id: newRecipe.id || "custom-" + Date.now().toString(),
       author: newRecipe.author || session.name,
       authorInitials: newRecipe.authorInitials || session.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2),
+      createdBy: session.email,
     };
 
     recipes.unshift(enrichedRecipe);
@@ -534,9 +535,15 @@ Return JSON only.` }
     }
 
     const deletedRecipe = recipes[recipeIndex];
+
+    // Enforce that delete is only allowed for the user who uploaded it
+    if (deletedRecipe.createdBy && deletedRecipe.createdBy.toLowerCase() !== session.email.toLowerCase()) {
+      return res.status(403).json({ error: "You can only delete recipes that you uploaded" });
+    }
+
     recipes.splice(recipeIndex, 1);
     saveRecipes(recipes);
-    console.log(`[Recipes] Recipe deleted: ${deletedRecipe.title}`);
+    console.log(`[Recipes] Recipe deleted: ${deletedRecipe.title} by user ${session.email}`);
     res.json({ success: true });
   });
 
