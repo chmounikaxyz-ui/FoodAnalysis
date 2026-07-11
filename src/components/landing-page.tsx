@@ -28,8 +28,8 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (userData: { name:
     try {
       const endpoint = authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
       const body = authMode === "signup"
-        ? { name: formData.name.trim(), email: formData.email, password: formData.password }
-        : { email: formData.email, password: formData.password };
+        ? { name: formData.name.trim(), email: formData.email.trim(), password: formData.password }
+        : { email: formData.email.trim(), password: formData.password };
 
       const res = await fetch(endpoint, {
         method: "POST",

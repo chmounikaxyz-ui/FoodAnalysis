@@ -33,22 +33,48 @@ function saveUsers(users: StoredUser[]) {
 }
 
 function findUser(email: string): StoredUser | undefined {
-  return loadUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (typeof email !== "string") return undefined;
+  const target = email.trim().toLowerCase();
+  return loadUsers().find(u => u.email.trim().toLowerCase() === target);
 }
 
-// ── Session store (in-memory, keyed by session token) ─────────────────────────
+// ── Session store (persisted in JSON, keyed by session token) ─────────────────
 interface Session {
   email: string;
   name: string;
   createdAt: number;
 }
-const sessions = new Map<string, Session>();
+
+const SESSIONS_FILE = path.join(process.cwd(), ".sessions.json");
+
+function loadSessions(): Map<string, Session> {
+  const map = new Map<string, Session>();
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf-8"));
+      for (const [k, v] of Object.entries(data)) {
+        map.set(k, v as Session);
+      }
+    }
+  } catch (e) { console.error("[Session] Failed to load sessions:", e); }
+  return map;
+}
+
+function saveSessions(map: Map<string, Session>) {
+  try {
+    const obj = Object.fromEntries(map.entries());
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), "utf-8");
+  } catch (e) { console.error("[Session] Failed to save sessions:", e); }
+}
+
+const sessions = loadSessions();
 const SESSION_COOKIE = "nru_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function createSession(email: string, name: string): string {
   const token = crypto.randomBytes(32).toString("hex");
   sessions.set(token, { email, name, createdAt: Date.now() });
+  saveSessions(sessions);
   return token;
 }
 
@@ -57,6 +83,7 @@ function getSession(token: string): Session | null {
   if (!session) return null;
   if (Date.now() - session.createdAt > SESSION_MAX_AGE) {
     sessions.delete(token);
+    saveSessions(sessions);
     return null;
   }
   return session;
@@ -64,6 +91,7 @@ function getSession(token: string): Session | null {
 
 function deleteSession(token: string) {
   sessions.delete(token);
+  saveSessions(sessions);
 }
 
 // Middleware: get current session from cookie
