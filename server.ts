@@ -662,8 +662,9 @@ Return JSON only.` }
         </html>
       `);
     } catch (error: any) {
-      console.error("[OAuth] Token exchange failed:", error.response?.data || error.message);
-      res.status(500).send("Authentication failed");
+      const errorData = error.response?.data;
+      console.error("[OAuth] Token exchange failed:", errorData || error.message);
+      res.status(500).send(`Authentication failed: ${JSON.stringify(errorData || error.message)}`);
     }
   });
 

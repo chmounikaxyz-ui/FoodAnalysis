@@ -1,7 +1,6 @@
 import * as React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
 import { MealLog, NutritionalInfo, Recipe } from "../types"
-import { recipes as defaultRecipes } from "../components/recipes/recipe-data"
 
 interface Comment {
   id: string;
@@ -138,7 +137,7 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     return saved ? JSON.parse(saved) : []
   })
 
-  const [userRecipes, setUserRecipes] = useState<Recipe[]>(defaultRecipes)
+  const [userRecipes, setUserRecipes] = useState<Recipe[]>([])
 
   const [comments, setComments] = useState<Comment[]>([])
 
@@ -280,11 +279,7 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     // Fetch recipes and comments from server
     fetch("/api/recipes")
       .then(res => { if (res.ok) return res.json(); })
-      .then(data => {
-        if (data && Array.isArray(data)) {
-          setUserRecipes([...data, ...defaultRecipes]);
-        }
-      })
+      .then(data => { if (data) setUserRecipes(data); })
       .catch(() => {});
 
     fetch("/api/comments")
