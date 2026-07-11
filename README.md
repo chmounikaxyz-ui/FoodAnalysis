@@ -1,5 +1,7 @@
 # 🥗 Nru — AI-Powered Nutrition Tracking Redefined
 
+**Deployed Application:** [https://foodanalysis-0uoa.onrender.com/](https://foodanalysis-0uoa.onrender.com/)
+
 Nru is a modern, premium AI nutrition assistant and wellness tracker. It helps users log meals via photo analysis, sync smart watch health data (Google Fit), track daily macronutrients/hydration, and discover personalized recipes.
 
 It features a **hybrid AI intelligence routing layer** that leverages **local offline machine learning models (Ollama)** when available, falling back to the **Gemini Cloud API** when offline.
