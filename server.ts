@@ -108,6 +108,62 @@ function deleteUserToken(email: string) {
   saveAllTokens(store);
 }
 
+// ── Recipes store ─────────────────────────────────────────────────────────────
+const RECIPES_FILE = path.join(process.cwd(), ".recipes.json");
+
+// Import default recipes to seed database if not exists
+import { recipes as DEFAULT_RECIPES } from "./src/components/recipes/recipe-data";
+
+function loadRecipes(): any[] {
+  try {
+    if (fs.existsSync(RECIPES_FILE)) {
+      return JSON.parse(fs.readFileSync(RECIPES_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.error("[Recipes] Failed to load recipes:", e);
+  }
+  
+  // Seed file
+  try {
+    const seeded = DEFAULT_RECIPES.map((r: any) => ({ ...r, id: r.id.toString() }));
+    fs.writeFileSync(RECIPES_FILE, JSON.stringify(seeded, null, 2), "utf-8");
+    return seeded;
+  } catch (e) {
+    console.error("[Recipes] Failed to write initial seed recipes:", e);
+  }
+  return [];
+}
+
+function saveRecipes(recipes: any[]) {
+  try {
+    fs.writeFileSync(RECIPES_FILE, JSON.stringify(recipes, null, 2), "utf-8");
+  } catch (e) {
+    console.error("[Recipes] Failed to save recipes:", e);
+  }
+}
+
+// ── Comments store ────────────────────────────────────────────────────────────
+const COMMENTS_FILE = path.join(process.cwd(), ".comments.json");
+
+function loadComments(): any[] {
+  try {
+    if (fs.existsSync(COMMENTS_FILE)) {
+      return JSON.parse(fs.readFileSync(COMMENTS_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.error("[Comments] Failed to load comments:", e);
+  }
+  return [];
+}
+
+function saveComments(comments: any[]) {
+  try {
+    fs.writeFileSync(COMMENTS_FILE, JSON.stringify(comments, null, 2), "utf-8");
+  } catch (e) {
+    console.error("[Comments] Failed to save comments:", e);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -411,6 +467,83 @@ Return JSON only.` }
         });
       }
     }
+  });
+
+  // ── Recipe endpoints ────────────────────────────────────────────────────────
+  app.get("/api/recipes", (req, res) => {
+    res.json(loadRecipes());
+  });
+
+  app.post("/api/recipes", (req, res) => {
+    const session = getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    const newRecipe = req.body;
+    if (!newRecipe || !newRecipe.title) {
+      return res.status(400).json({ error: "Recipe title is required" });
+    }
+
+    const recipes = loadRecipes();
+    // Add author details if not already present
+    const enrichedRecipe = {
+      ...newRecipe,
+      id: newRecipe.id || "custom-" + Date.now().toString(),
+      author: newRecipe.author || session.name,
+      authorInitials: newRecipe.authorInitials || session.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2),
+    };
+
+    recipes.unshift(enrichedRecipe);
+    saveRecipes(recipes);
+    console.log(`[Recipes] New recipe uploaded by user ${session.email}: ${enrichedRecipe.title}`);
+    res.json(enrichedRecipe);
+  });
+
+  app.delete("/api/recipes/:id", (req, res) => {
+    const session = getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    const { id } = req.params;
+    const recipes = loadRecipes();
+    const recipeIndex = recipes.findIndex(r => r.id.toString() === id.toString());
+
+    if (recipeIndex === -1) {
+      return res.status(404).json({ error: "Recipe not found" });
+    }
+
+    const deletedRecipe = recipes[recipeIndex];
+    recipes.splice(recipeIndex, 1);
+    saveRecipes(recipes);
+    console.log(`[Recipes] Recipe deleted: ${deletedRecipe.title}`);
+    res.json({ success: true });
+  });
+
+  // ── Comment endpoints ───────────────────────────────────────────────────────
+  app.get("/api/comments", (req, res) => {
+    res.json(loadComments());
+  });
+
+  app.post("/api/comments", (req, res) => {
+    const session = getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    const { recipeId, text } = req.body;
+    if (!recipeId || !text) {
+      return res.status(400).json({ error: "Recipe ID and text are required" });
+    }
+
+    const comments = loadComments();
+    const newComment = {
+      id: Math.random().toString(36).substring(7),
+      recipeId: recipeId.toString(),
+      text,
+      date: new Date().toLocaleDateString(),
+      author: session.name
+    };
+
+    comments.unshift(newComment);
+    saveComments(comments);
+    console.log(`[Comments] New comment added by ${session.email} on recipe ${recipeId}`);
+    res.json(newComment);
   });
 
   // Google Auth URL — requires active session

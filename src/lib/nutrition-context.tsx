@@ -7,6 +7,7 @@ interface Comment {
   text: string;
   date: string;
   recipeId: string;
+  author?: string;
 }
 
 interface Notification {
@@ -136,15 +137,9 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     return saved ? JSON.parse(saved) : []
   })
 
-  const [userRecipes, setUserRecipes] = useState<Recipe[]>(() => {
-    const saved = localStorage.getItem("nru_user_recipes")
-    return saved ? JSON.parse(saved) : []
-  })
+  const [userRecipes, setUserRecipes] = useState<Recipe[]>([])
 
-  const [comments, setComments] = useState<Comment[]>(() => {
-    const saved = localStorage.getItem("nru_comments")
-    return saved ? JSON.parse(saved) : []
-  })
+  const [comments, setComments] = useState<Comment[]>([])
 
   const [hydration, setHydration] = useState(() => {
     const saved = localStorage.getItem("nru_hydration")
@@ -213,13 +208,7 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("nru_saved_recipes", JSON.stringify(savedRecipes))
   }, [savedRecipes])
 
-  useEffect(() => {
-    localStorage.setItem("nru_user_recipes", JSON.stringify(userRecipes))
-  }, [userRecipes])
 
-  useEffect(() => {
-    localStorage.setItem("nru_comments", JSON.stringify(comments))
-  }, [comments])
 
   useEffect(() => {
     localStorage.setItem("nru_hydration", JSON.stringify({
@@ -286,6 +275,17 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
         .then(res => { if (!res.ok) { localStorage.removeItem("nru_auth"); setIsAuthenticated(false); } })
         .catch(() => {});
     }
+
+    // Fetch recipes and comments from server
+    fetch("/api/recipes")
+      .then(res => { if (res.ok) return res.json(); })
+      .then(data => { if (data) setUserRecipes(data); })
+      .catch(() => {});
+
+    fetch("/api/comments")
+      .then(res => { if (res.ok) return res.json(); })
+      .then(data => { if (data) setComments(data); })
+      .catch(() => {});
 
     if (isWatchConnected) {
       syncWithWatch().catch(() => {}); // Silently verify on mount
@@ -425,23 +425,50 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     })
   }
 
-  const addUserRecipe = (recipe: Recipe) => {
-    setUserRecipes((prev) => [recipe, ...prev])
-  }
-
-  const removeUserRecipe = (id: string | number) => {
-    setUserRecipes((prev) => prev.filter((r) => r.id.toString() !== id.toString()))
-    setSavedRecipes((prev) => prev.filter((r) => r.id.toString() !== id.toString()))
-  }
-
-  const addComment = (recipeId: string, text: string) => {
-    const newComment: Comment = {
-      id: Math.random().toString(36).substring(7),
-      recipeId,
-      text,
-      date: new Date().toLocaleDateString()
+  const addUserRecipe = async (recipe: Recipe) => {
+    try {
+      const response = await fetch("/api/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(recipe),
+      });
+      if (response.ok) {
+        const savedRecipe = await response.json();
+        setUserRecipes((prev) => [savedRecipe, ...prev]);
+      }
+    } catch (e) {
+      console.error("[Recipes] Failed to add recipe:", e);
     }
-    setComments(prev => [newComment, ...prev])
+  }
+
+  const removeUserRecipe = async (id: string | number) => {
+    try {
+      const response = await fetch(`/api/recipes/${id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setUserRecipes((prev) => prev.filter((r) => r.id.toString() !== id.toString()));
+        setSavedRecipes((prev) => prev.filter((r) => r.id.toString() !== id.toString()));
+      }
+    } catch (e) {
+      console.error("[Recipes] Failed to remove recipe:", e);
+    }
+  }
+
+  const addComment = async (recipeId: string, text: string) => {
+    try {
+      const response = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipeId, text }),
+      });
+      if (response.ok) {
+        const savedComment = await response.json();
+        setComments(prev => [savedComment, ...prev]);
+      }
+    } catch (e) {
+      console.error("[Comments] Failed to add comment:", e);
+    }
   }
 
   const addHydration = (amount: number) => {

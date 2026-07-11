@@ -14,7 +14,7 @@ interface AddRecipeModalProps {
 }
 
 export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
-  const { addUserRecipe } = useNutrition()
+  const { addUserRecipe, profile } = useNutrition()
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: "",
@@ -72,8 +72,8 @@ export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
       id: "custom-" + Date.now().toString(),
       title: formData.title,
       description: formData.description,
-      author: "Me",
-      authorInitials: "ME",
+      author: profile?.name || "Anonymous",
+      authorInitials: (profile?.name || "Anonymous").split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2),
       image: formData.image || "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=800&q=80",
       calories: formData.calories,
       prepTime: formData.prepTime || "20 min",

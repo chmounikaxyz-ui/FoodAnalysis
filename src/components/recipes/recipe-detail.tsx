@@ -33,7 +33,7 @@ const displayValue = (val: any) => {
 };
 
 export function RecipeDetail({ recipe, onClose }: RecipeDetailProps) {
-  const { savedRecipes, toggleSaveRecipe, removeUserRecipe, comments, addComment } = useNutrition()
+  const { savedRecipes, toggleSaveRecipe, removeUserRecipe, comments, addComment, profile } = useNutrition()
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([])
   const [isCooking, setIsCooking] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
@@ -323,7 +323,9 @@ export function RecipeDetail({ recipe, onClose }: RecipeDetailProps) {
               {recipeComments.map(c => (
                 <div key={c.id} className="bg-secondary/20 rounded-2xl p-4 border border-border/30">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] font-bold text-primary">You</span>
+                    <span className="text-[10px] font-bold text-primary">
+                      {c.author === profile?.name ? "You" : (c.author || "Anonymous")}
+                    </span>
                     <span className="text-[10px] text-muted-foreground">{c.date}</span>
                   </div>
                   <p className="text-xs text-foreground leading-relaxed">{c.text}</p>
