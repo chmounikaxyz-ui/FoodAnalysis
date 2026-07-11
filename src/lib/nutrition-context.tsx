@@ -39,10 +39,12 @@ interface NutritionContextType {
   addSteps: (amount: number) => void
   syncWithWatch: () => Promise<void>
   isWatchConnected: boolean
+  setIsWatchConnected: (v: boolean) => void
   lastSync: string | null
   profile: {
     name: string;
     email: string;
+    photo?: string;
   }
   dailyGoal: {
     calories: number;
@@ -278,18 +280,43 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
   }, [notificationsRead])
 
   useEffect(() => {
+    // Verify server-side session is still valid on mount
+    if (localStorage.getItem("nru_auth") === "true") {
+      fetch("/api/auth/me")
+        .then(res => { if (!res.ok) { localStorage.removeItem("nru_auth"); setIsAuthenticated(false); } })
+        .catch(() => {});
+    }
+
     if (isWatchConnected) {
       syncWithWatch().catch(() => {}); // Silently verify on mount
+    } else {
+      // Even without a watch, estimate sleep from meal times
+      const estimated = estimateSleepFromMeals(meals)
+      if (estimated > 0 && sleep === 0) setSleep(estimated)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const playNotificationSound = () => {
     try {
-      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3")
-      audio.volume = 0.4
-      audio.play().catch(e => console.log("Audio play blocked", e))
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const freqs = [880, 1100]
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = "sine"
+        osc.frequency.value = freq
+        const t = ctx.currentTime + i * 0.13
+        gain.gain.setValueAtTime(0, t)
+        gain.gain.linearRampToValueAtTime(0.25, t + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35)
+        osc.start(t)
+        osc.stop(t + 0.35)
+      })
     } catch (e) {
-      console.error("Audio error", e)
+      // Audio not available
     }
   }
 
@@ -352,7 +379,13 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
       fat: prevTotals.fat + info.fat,
     }
 
-    setMeals((prev) => [newMeal, ...prev])
+    setMeals((prev) => {
+      const updated = [newMeal, ...prev]
+      // Re-estimate sleep whenever a meal is added (breakfast triggers recalculation)
+      const estimated = estimateSleepFromMeals(updated)
+      if (estimated > 0) setSleep(estimated)
+      return updated
+    })
 
     // 1. Calorie goal reached and warning
     if (dailyGoal.calories > 0 && prevTotals.calories < dailyGoal.calories && newTotals.calories >= dailyGoal.calories) {
@@ -441,6 +474,48 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const estimateSleepFromMeals = (mealList: MealLog[]): number => {
+    const now = new Date()
+    const todayStr = now.toDateString()
+
+    // Yesterday's date string
+    const yesterday = new Date(now)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = yesterday.toDateString()
+
+    // Last dinner = last meal logged between 6 PM – 11:59 PM yesterday (or today if no breakfast yet)
+    const dinnerWindow = mealList
+      .filter(m => {
+        const d = new Date(m.timestamp)
+        const h = d.getHours()
+        return d.toDateString() === yesterdayStr && h >= 18 && h <= 23
+      })
+      .sort((a, b) => b.timestamp - a.timestamp) // latest first
+
+    // First breakfast = first meal logged between 5 AM – 10 AM today
+    const breakfastWindow = mealList
+      .filter(m => {
+        const d = new Date(m.timestamp)
+        const h = d.getHours()
+        return d.toDateString() === todayStr && h >= 5 && h <= 10
+      })
+      .sort((a, b) => a.timestamp - b.timestamp) // earliest first
+
+    if (dinnerWindow.length === 0 || breakfastWindow.length === 0) return 0
+
+    const dinner = dinnerWindow[0]
+    const breakfast = breakfastWindow[0]
+
+    const diffMs = breakfast.timestamp - dinner.timestamp
+    if (diffMs <= 0) return 0
+
+    const hours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10
+    // Sanity check: sleep should be between 3 and 14 hours
+    if (hours < 3 || hours > 14) return 0
+
+    return hours
+  }
+
   const syncWithWatch = async () => {
     try {
       const response = await fetch("/api/watch/sync")
@@ -454,8 +529,16 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
       }
       
       setSteps(data.steps)
-      setSleep(data.sleep)
       setHydration(data.hydration)
+
+      // Use Google Fit sleep if available, otherwise estimate from meal times
+      if (data.sleep > 0) {
+        setSleep(data.sleep)
+      } else {
+        const estimated = estimateSleepFromMeals(meals)
+        if (estimated > 0) setSleep(estimated)
+      }
+
       setLastSync(new Date().toLocaleTimeString())
       setIsWatchConnected(true)
     } catch (error: any) {
@@ -548,6 +631,8 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     console.log("Logging out...");
+    // Clear server-side session cookie
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     localStorage.removeItem("nru_auth");
     setIsAuthenticated(false);
     setTimeout(() => {
@@ -597,6 +682,7 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
         addSteps,
         syncWithWatch,
         isWatchConnected,
+        setIsWatchConnected,
         lastSync,
         profile,
         dailyGoal,

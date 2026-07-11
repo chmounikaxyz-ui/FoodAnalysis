@@ -1,89 +1,71 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { NutritionalInfo } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// All AI calls go through the server so the API key stays server-side
 
-export async function analyzeFoodImage(base64Image: string, mimeType: string): Promise<NutritionalInfo> {
-  const model = "gemini-3-flash-preview";
-  
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType,
-            data: base64Image.split(',')[1] || base64Image,
-          },
-        },
-        {
-          text: "First, strictly verify if the main subject of this image is food. If it is NOT food (e.g., a person giving a presentation, a building, a pet, a document, etc.), set 'isFood' to false, 'foodName' to 'Non-food item', and use the 'analysis' field to politely explain that you can only analyze nutritional content of food. If it IS food, set 'isFood' to true and provide a comprehensive nutrition breakdown including food name, estimated calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), vitamins/minerals, glycemic index (Low/Medium/High), estimated weight (grams), health score (0-100), and a brief overall analysis. Also provide 3 short actionable health tips based on this meal.",
-        },
-      ],
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          isFood: { type: Type.BOOLEAN },
-          foodName: { type: Type.STRING },
-          calories: { type: Type.NUMBER },
-          protein: { type: Type.NUMBER },
-          carbs: { type: Type.NUMBER },
-          fat: { type: Type.NUMBER },
-          fiber: { type: Type.NUMBER },
-          sugar: { type: Type.NUMBER },
-          vitamins: { 
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          },
-          glycemicIndex: { 
-            type: Type.STRING,
-            enum: ["Low", "Medium", "High"]
-          },
-          estimatedWeight: { type: Type.NUMBER },
-          healthScore: { type: Type.NUMBER },
-          analysis: { type: Type.STRING },
-          healthTips: { 
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          }
-        },
-        required: ["isFood", "foodName", "calories", "protein", "carbs", "fat", "healthScore", "analysis", "healthTips"],
-      },
-    },
-  });
-
-  if (!response.text) {
-    throw new Error("No response from AI");
-  }
-
-  try {
-    const cleanJson = response.text.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleanJson);
-  } catch (e) {
-    console.error("Failed to parse AI response:", response.text);
-    throw new Error("Failed to analyze food image.");
-  }
+export interface ClarifyResult {
+  isFood: boolean;
+  foodName: string;
+  questions: string[];
 }
 
-export async function getNutritionChatResponse(message: string, history: { role: "user" | "model", parts: string }[]) {
-  const model = "gemini-3-flash-preview";
-  
-  const response = await ai.models.generateContent({
-    model,
-    contents: [
-      ...history.map(h => ({ 
-        role: h.role === "user" ? "user" : "model", 
-        parts: [{ text: h.parts }] 
-      })),
-      { role: "user", parts: [{ text: message }] }
-    ],
-    config: {
-      systemInstruction: "You are Nru, a friendly and expert AI nutrition assistant. You help users understand nutrition, track their goals, and make healthier food choices. Be concise, evidence-based, and encouraging.",
-    },
+export async function clarifyFoodImage(base64Image: string, mimeType: string): Promise<ClarifyResult> {
+  const res = await fetch("/api/ai/clarify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ base64Image, mimeType }),
   });
 
-  return response.text;
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server error (${res.status}): ${res.statusText}`);
+  }
+
+  if (!res.ok) throw new Error(data.error || "Failed to identify food");
+  return data as ClarifyResult;
+}
+
+export async function analyzeFoodImage(
+  base64Image: string,
+  mimeType: string,
+  userAnswers?: string
+): Promise<NutritionalInfo> {
+  const res = await fetch("/api/ai/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ base64Image, mimeType, userAnswers }),
+  });
+
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Server error (${res.status}): ${res.statusText}`);
+  }
+
+  if (!res.ok) throw new Error(data.error || "Failed to analyze image");
+  return data as NutritionalInfo;
+}
+
+export async function getNutritionChatResponse(
+  message: string,
+  history: { role: "user" | "model"; parts: string }[]
+): Promise<string> {
+  const res = await fetch("/api/ai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ message, history }),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || "Chat request failed");
+  }
+
+  return data.text ?? "I couldn't generate a response. Please try again.";
 }

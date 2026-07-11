@@ -147,9 +147,13 @@ export function TopHeader() {
                 setShowNotifications(false);
               }}
             >
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                {profile.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-              </AvatarFallback>
+              {profile.photo ? (
+                <img src={profile.photo} className="w-full h-full object-cover rounded-full" />
+              ) : (
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                  {profile.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                </AvatarFallback>
+              )}
             </Avatar>
 
             <AnimatePresence>

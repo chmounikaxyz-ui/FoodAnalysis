@@ -7,18 +7,55 @@ import { motion, AnimatePresence } from "motion/react";
 export function LandingPage({ onGetStarted }: { onGetStarted: (userData: { name: string; email: string }) => void }) {
   const [authMode, setAuthMode] = React.useState<"landing" | "login" | "signup">("landing");
   const [isLoading, setIsLoading] = React.useState(false);
-  const [formData, setFormData] = React.useState({ name: "", email: "", password: "" });
+  const [formData, setFormData] = React.useState({ name: "", email: "", password: "", confirmPassword: "" });
+  const [error, setError] = React.useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    // Client-side validation
+    if (authMode === "signup") {
+      if (formData.name.trim().length < 2) { setError("Please enter your full name."); return; }
+      if (formData.password.length < 6) { setError("Password must be at least 6 characters."); return; }
+      if (formData.password !== formData.confirmPassword) { setError("Passwords do not match."); return; }
+    }
+    if (authMode === "login" && formData.password.length < 1) {
+      setError("Please enter your password."); return;
+    }
+
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onGetStarted({ 
-        name: formData.name || formData.email.split("@")[0], 
-        email: formData.email 
+    try {
+      const endpoint = authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+      const body = authMode === "signup"
+        ? { name: formData.name.trim(), email: formData.email, password: formData.password }
+        : { email: formData.email, password: formData.password };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
-    }, 1000);
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
+        return;
+      }
+
+      onGetStarted({ name: data.name, email: data.email });
+    } catch (err) {
+      setError("Network error. Make sure the server is running.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const switchMode = (mode: "login" | "signup") => {
+    setAuthMode(mode);
+    setError("");
+    setFormData({ name: "", email: "", password: "", confirmPassword: "" });
   };
 
   return (
@@ -129,18 +166,40 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (userData: { name:
                     type="password" 
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    placeholder="••••••••"
+                    placeholder="Min. 6 characters"
                     className="h-12 pl-11 rounded-2xl bg-slate-50 border-slate-200 focus:ring-primary/20"
                   />
                 </div>
               </div>
 
               {authMode === "signup" && (
-                <div className="flex items-center space-x-2 pl-1 pt-1">
-                  <input type="checkbox" id="terms" className="rounded border-slate-300 text-primary focus:ring-primary/20" required />
-                  <label htmlFor="terms" className="text-xs text-slate-500">
-                    I agree to the <span className="text-primary font-semibold cursor-pointer">Terms & Conditions</span>
-                  </label>
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Confirm Password</label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        required
+                        type="password"
+                        value={formData.confirmPassword}
+                        onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                        placeholder="Re-enter password"
+                        className="h-12 pl-11 rounded-2xl bg-slate-50 border-slate-200 focus:ring-primary/20"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 pl-1 pt-1">
+                    <input type="checkbox" id="terms" className="rounded border-slate-300 text-primary focus:ring-primary/20" required />
+                    <label htmlFor="terms" className="text-xs text-slate-500">
+                      I agree to the <span className="text-primary font-semibold cursor-pointer">Terms & Conditions</span>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {error && (
+                <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-center">
+                  {error}
                 </div>
               )}
 
@@ -157,7 +216,7 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (userData: { name:
               <Button 
                 variant="ghost" 
                 size="sm" 
-                onClick={() => setAuthMode("landing")}
+                onClick={() => { setAuthMode("landing"); setError("") }}
                 className="text-slate-400 hover:text-slate-600 rounded-xl"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
@@ -167,7 +226,7 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (userData: { name:
               <Button 
                 variant="link" 
                 size="sm"
-                onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+                onClick={() => switchMode(authMode === "login" ? "signup" : "login")}
                 className="text-primary font-bold"
               >
                 {authMode === "login" ? "Need an account?" : "Already have one?"}

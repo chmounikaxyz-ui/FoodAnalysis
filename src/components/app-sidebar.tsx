@@ -8,6 +8,7 @@ import {
   Leaf,
   Settings,
   User,
+  Droplets,
 } from "lucide-react";
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { label: "AI Chat", href: "/analysis", icon: MessageSquare },
   { label: "Recipes", href: "/recipes", icon: ChefHat },
   { label: "Metrics", href: "/metrics", icon: BarChart3 },
+  { label: "Water", href: "/water", icon: Droplets },
 ];
 
 const bottomItems = [

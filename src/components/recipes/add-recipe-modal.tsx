@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useNutrition } from "@/lib/nutrition-context"
 import { Recipe } from "@/types"
+import { cn } from "@/lib/utils"
+
+const AVAILABLE_TAGS = ["Vegan", "Gluten-Free", "High-Protein", "Low-Carb", "Quick Meal", "Keto"]
 
 interface AddRecipeModalProps {
   onClose: () => void
@@ -28,6 +31,13 @@ export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
 
   const [ingredients, setIngredients] = useState([{ amount: "", name: "" }])
   const [steps, setSteps] = useState([{ title: "", description: "" }])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    )
+  }
 
   const handleAddIngredient = () => setIngredients([...ingredients, { amount: "", name: "" }])
   const handleRemoveIngredient = (index: number) => setIngredients(ingredients.filter((_, i) => i !== index))
@@ -78,7 +88,7 @@ export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
       ingredients: ingredients.filter(i => i.name.trim() !== ""),
       steps: steps.filter(s => s.title.trim() !== ""),
       isCustom: true,
-      tags: ["My Recipe"],
+      tags: selectedTags.length > 0 ? selectedTags : ["My Recipe"],
     }
 
     setTimeout(() => {
@@ -112,18 +122,16 @@ export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
 
               <div className="aspect-video relative rounded-2xl border-2 border-dashed border-border overflow-hidden group hover:border-primary/50 transition-colors">
                 {formData.image ? (
-                  <>
+                  <div className="relative w-full h-full">
                     <img src={formData.image} className="w-full h-full object-cover" />
-                    <Button 
-                        type="button" 
-                        variant="destructive" 
-                        size="icon" 
-                        className="absolute top-2 right-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => setFormData(prev => ({ ...prev, image: "" }))}
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, image: "" }))}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/60 hover:bg-red-500 flex items-center justify-center transition-colors"
                     >
-                        <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </>
+                      <Trash2 className="w-3.5 h-3.5 text-white" />
+                    </button>
+                  </div>
                 ) : (
                   <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
@@ -179,6 +187,34 @@ export function AddRecipeModal({ onClose }: AddRecipeModalProps) {
                     />
                 </div>
                ))}
+            </section>
+
+            {/* Tags Selection */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-1 h-5 bg-primary rounded-full" />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Diet & Tag Categories</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {AVAILABLE_TAGS.map((tag) => {
+                  const isSelected = selectedTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border cursor-pointer",
+                        isSelected
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-card text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
             </section>
 
             {/* Ingredients */}
