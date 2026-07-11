@@ -111,25 +111,20 @@ function deleteUserToken(email: string) {
 // ── Recipes store ─────────────────────────────────────────────────────────────
 const RECIPES_FILE = path.join(process.cwd(), ".recipes.json");
 
-// Import default recipes to seed database if not exists
-import { recipes as DEFAULT_RECIPES } from "./src/components/recipes/recipe-data";
 
 function loadRecipes(): any[] {
   try {
     if (fs.existsSync(RECIPES_FILE)) {
-      return JSON.parse(fs.readFileSync(RECIPES_FILE, "utf-8"));
+      const list = JSON.parse(fs.readFileSync(RECIPES_FILE, "utf-8"));
+      // Filter out any static default recipes (they don't start with "custom-")
+      const filtered = list.filter((r: any) => typeof r.id === "string" && r.id.startsWith("custom-"));
+      if (filtered.length !== list.length) {
+        fs.writeFileSync(RECIPES_FILE, JSON.stringify(filtered, null, 2), "utf-8");
+      }
+      return filtered;
     }
   } catch (e) {
     console.error("[Recipes] Failed to load recipes:", e);
-  }
-  
-  // Seed file
-  try {
-    const seeded = DEFAULT_RECIPES.map((r: any) => ({ ...r, id: r.id.toString() }));
-    fs.writeFileSync(RECIPES_FILE, JSON.stringify(seeded, null, 2), "utf-8");
-    return seeded;
-  } catch (e) {
-    console.error("[Recipes] Failed to write initial seed recipes:", e);
   }
   return [];
 }
