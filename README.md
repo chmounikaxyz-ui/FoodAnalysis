@@ -1,18 +1,3 @@
----
-name: NutriSnap AI
-description: Smart nutrition tracking with AI-powered meal analysis and comprehensive wellness monitoring.
-website: https://foodanalysis-0uoa.onrender.com/
-topics:
-  - nutrition-tracker
-  - ai-food-analysis
-  - react
-  - typescript
-  - vite
-  - tailwindcss
-  - ollama
-  - gemini-api
-  - wellness
----
 
 # 🥗 Nru — AI-Powered Nutrition Tracking Redefined
 
