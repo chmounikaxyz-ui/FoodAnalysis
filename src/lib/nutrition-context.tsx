@@ -187,6 +187,8 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     return localStorage.getItem("nru_last_sync")
   })
 
+  const [isDataLoaded, setIsDataLoaded] = useState(false)
+
   const [notificationsRead, setNotificationsRead] = useState(() => {
     return localStorage.getItem("nru_notifications_read") === "true"
   })
@@ -268,12 +270,77 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("nru_notifications_read", notificationsRead.toString())
   }, [notificationsRead])
 
+  const fetchUserData = async () => {
+    try {
+      const res = await fetch("/api/sync/get");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.meals) setMeals(data.meals);
+        if (data.goals) setDailyGoal(data.goals);
+        if (data.metrics) {
+          setHydration(data.metrics.hydration || 0);
+          setSleep(data.metrics.sleep || 0);
+          setSteps(data.metrics.steps || 0);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to sync user data from server:", e);
+    } finally {
+      setIsDataLoaded(true);
+    }
+  };
+
+  // Sync metrics to server
+  useEffect(() => {
+    if (isAuthenticated && isDataLoaded) {
+      fetch("/api/sync/metrics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hydration, sleep, steps })
+      }).catch(e => console.error("Failed to sync metrics to server:", e));
+    }
+  }, [hydration, sleep, steps, isAuthenticated, isDataLoaded]);
+
+  // Sync goals to server
+  useEffect(() => {
+    if (isAuthenticated && isDataLoaded) {
+      fetch("/api/sync/goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dailyGoal)
+      }).catch(e => console.error("Failed to sync goals to server:", e));
+    }
+  }, [dailyGoal, isAuthenticated, isDataLoaded]);
+
+  // Sync profile photo to server
+  useEffect(() => {
+    if (isAuthenticated && isDataLoaded && profile.photo) {
+      fetch("/api/sync/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo: profile.photo })
+      }).catch(e => console.error("Failed to sync profile photo to server:", e));
+    }
+  }, [profile.photo, isAuthenticated, isDataLoaded]);
+
   useEffect(() => {
     // Verify server-side session is still valid on mount
     if (localStorage.getItem("nru_auth") === "true") {
       fetch("/api/auth/me")
-        .then(res => { if (!res.ok) { localStorage.removeItem("nru_auth"); setIsAuthenticated(false); } })
-        .catch(() => {});
+        .then(res => { 
+          if (!res.ok) { 
+            localStorage.removeItem("nru_auth"); 
+            setIsAuthenticated(false); 
+            setIsDataLoaded(true);
+          } else {
+            fetchUserData();
+          }
+        })
+        .catch(() => {
+          setIsDataLoaded(true);
+        });
+    } else {
+      setIsDataLoaded(true);
     }
 
     // Fetch recipes and comments from server
@@ -362,6 +429,15 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
       imageUrl,
     }
     
+    // Save to server if authenticated
+    if (isAuthenticated) {
+      fetch("/api/sync/meals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newMeal)
+      }).catch(e => console.error("Failed to sync new meal to server:", e));
+    }
+    
     // Calculate today's totals BEFORE adding new meal to compare
     const todayStr = new Date().toDateString()
     const todayMeals = meals.filter(m => new Date(m.timestamp).toDateString() === todayStr)
@@ -413,6 +489,11 @@ export function NutritionProvider({ children }: { children: React.ReactNode }) {
 
   const removeMeal = (id: string) => {
     setMeals((prev) => prev.filter((m) => m.id !== id))
+    if (isAuthenticated) {
+      fetch(`/api/sync/meals/${id}`, {
+        method: "DELETE"
+      }).catch(e => console.error("Failed to delete meal from server:", e));
+    }
   }
 
   const toggleSaveRecipe = (recipe: any) => {

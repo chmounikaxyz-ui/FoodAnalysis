@@ -7,184 +7,68 @@ import bcrypt from "bcryptjs";
 import cookieParser from "cookie-parser";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { Database, FileDatabase, PostgresDatabase } from "./server/db";
 
 dotenv.config({ path: ".env.local" }); // load .env.local first (higher priority)
 dotenv.config();                       // fallback to .env for anything not in .env.local
 
-// ── Auth store ────────────────────────────────────────────────────────────────
-const USERS_FILE = path.join(process.cwd(), ".users.json");
+// Instantiate database based on environment configuration
+let db: Database;
+const DATABASE_URL = process.env.DATABASE_URL;
 
-interface StoredUser {
-  name: string;
-  email: string;
-  passwordHash: string;
-}
-
-function loadUsers(): StoredUser[] {
+if (DATABASE_URL) {
   try {
-    if (fs.existsSync(USERS_FILE)) return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-  } catch (e) { console.error("[Auth] Failed to load users:", e); }
-  return [];
+    db = new PostgresDatabase(DATABASE_URL);
+  } catch (e: any) {
+    console.warn("[Database] Failed to load PostgreSQL client driver. Falling back to FileDatabase. Error:", e.message);
+    db = new FileDatabase();
+  }
+} else {
+  db = new FileDatabase();
 }
 
-function saveUsers(users: StoredUser[]) {
-  try { fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf-8"); }
-  catch (e) { console.error("[Auth] Failed to save users:", e); }
-}
-
-function findUser(email: string): StoredUser | undefined {
-  if (typeof email !== "string") return undefined;
-  const target = email.trim().toLowerCase();
-  return loadUsers().find(u => u.email.trim().toLowerCase() === target);
-}
-
-// ── Session store (persisted in JSON, keyed by session token) ─────────────────
-interface Session {
-  email: string;
-  name: string;
-  createdAt: number;
-}
-
-const SESSIONS_FILE = path.join(process.cwd(), ".sessions.json");
-
-function loadSessions(): Map<string, Session> {
-  const map = new Map<string, Session>();
-  try {
-    if (fs.existsSync(SESSIONS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf-8"));
-      for (const [k, v] of Object.entries(data)) {
-        map.set(k, v as Session);
-      }
-    }
-  } catch (e) { console.error("[Session] Failed to load sessions:", e); }
-  return map;
-}
-
-function saveSessions(map: Map<string, Session>) {
-  try {
-    const obj = Object.fromEntries(map.entries());
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), "utf-8");
-  } catch (e) { console.error("[Session] Failed to save sessions:", e); }
-}
-
-const sessions = loadSessions();
+// ── Database-backed Helper Functions ──────────────────────────────────────────
 const SESSION_COOKIE = "nru_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-function createSession(email: string, name: string): string {
-  const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { email, name, createdAt: Date.now() });
-  saveSessions(sessions);
-  return token;
-}
-
-function getSession(token: string): Session | null {
-  const session = sessions.get(token);
+async function getCurrentSession(req: express.Request): Promise<any | null> {
+  const token = req.cookies?.[SESSION_COOKIE];
+  if (!token) return null;
+  const session = await db.getSession(token);
   if (!session) return null;
   if (Date.now() - session.createdAt > SESSION_MAX_AGE) {
-    sessions.delete(token);
-    saveSessions(sessions);
+    await db.deleteSession(token);
     return null;
   }
   return session;
 }
 
-function deleteSession(token: string) {
-  sessions.delete(token);
-  saveSessions(sessions);
+async function getUserToken(email: string): Promise<any> {
+  return await db.getUserToken(email);
 }
 
-// Middleware: get current session from cookie
-function getCurrentSession(req: express.Request): Session | null {
-  const token = req.cookies?.[SESSION_COOKIE];
-  if (!token) return null;
-  return getSession(token);
+async function setUserToken(email: string, token: any): Promise<void> {
+  await db.setUserToken(email, token);
 }
 
-// ── OAuth tokens per user ─────────────────────────────────────────────────────
-const TOKEN_FILE = path.join(process.cwd(), ".tokens.json");
-
-interface TokenStore {
-  [email: string]: any; // Google OAuth token response keyed by user email
+async function deleteUserToken(email: string): Promise<void> {
+  await db.deleteUserToken(email);
 }
 
-function loadAllTokens(): TokenStore {
-  try {
-    if (fs.existsSync(TOKEN_FILE)) return JSON.parse(fs.readFileSync(TOKEN_FILE, "utf-8"));
-  } catch (e) { console.error("[OAuth] Failed to load tokens:", e); }
-  return {};
+async function loadRecipes(): Promise<any[]> {
+  return await db.loadRecipes();
 }
 
-function saveAllTokens(store: TokenStore) {
-  try { fs.writeFileSync(TOKEN_FILE, JSON.stringify(store, null, 2), "utf-8"); }
-  catch (e) { console.error("[OAuth] Failed to save tokens:", e); }
+async function saveRecipe(recipe: any): Promise<void> {
+  await db.saveRecipe(recipe);
 }
 
-function getUserToken(email: string): any {
-  return loadAllTokens()[email.toLowerCase()] || null;
+async function loadComments(): Promise<any[]> {
+  return await db.loadComments();
 }
 
-function setUserToken(email: string, token: any) {
-  const store = loadAllTokens();
-  store[email.toLowerCase()] = token;
-  saveAllTokens(store);
-}
-
-function deleteUserToken(email: string) {
-  const store = loadAllTokens();
-  delete store[email.toLowerCase()];
-  saveAllTokens(store);
-}
-
-// ── Recipes store ─────────────────────────────────────────────────────────────
-const RECIPES_FILE = path.join(process.cwd(), ".recipes.json");
-
-
-function loadRecipes(): any[] {
-  try {
-    if (fs.existsSync(RECIPES_FILE)) {
-      const list = JSON.parse(fs.readFileSync(RECIPES_FILE, "utf-8"));
-      // Filter out any static default recipes (they don't start with "custom-")
-      const filtered = list.filter((r: any) => typeof r.id === "string" && r.id.startsWith("custom-"));
-      if (filtered.length !== list.length) {
-        fs.writeFileSync(RECIPES_FILE, JSON.stringify(filtered, null, 2), "utf-8");
-      }
-      return filtered;
-    }
-  } catch (e) {
-    console.error("[Recipes] Failed to load recipes:", e);
-  }
-  return [];
-}
-
-function saveRecipes(recipes: any[]) {
-  try {
-    fs.writeFileSync(RECIPES_FILE, JSON.stringify(recipes, null, 2), "utf-8");
-  } catch (e) {
-    console.error("[Recipes] Failed to save recipes:", e);
-  }
-}
-
-// ── Comments store ────────────────────────────────────────────────────────────
-const COMMENTS_FILE = path.join(process.cwd(), ".comments.json");
-
-function loadComments(): any[] {
-  try {
-    if (fs.existsSync(COMMENTS_FILE)) {
-      return JSON.parse(fs.readFileSync(COMMENTS_FILE, "utf-8"));
-    }
-  } catch (e) {
-    console.error("[Comments] Failed to load comments:", e);
-  }
-  return [];
-}
-
-function saveComments(comments: any[]) {
-  try {
-    fs.writeFileSync(COMMENTS_FILE, JSON.stringify(comments, null, 2), "utf-8");
-  } catch (e) {
-    console.error("[Comments] Failed to save comments:", e);
-  }
+async function saveComment(comment: any): Promise<void> {
+  await db.saveComment(comment);
 }
 
 async function startServer() {
@@ -195,6 +79,13 @@ async function startServer() {
   app.use(express.json({ limit: "20mb" }));
   app.use(cookieParser());
 
+  // Initialize Database
+  try {
+    await db.initialize();
+  } catch (err: any) {
+    console.error("[Database] Initialization failed:", err.message);
+  }
+
   // ── Auth endpoints ──────────────────────────────────────────────────────────
 
   app.post("/api/auth/signup", async (req, res) => {
@@ -202,17 +93,17 @@ async function startServer() {
     if (!name || !email || !password) return res.status(400).json({ error: "All fields required" });
     if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
-    const existing = findUser(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = await db.findUser(normalizedEmail);
     if (existing) return res.status(409).json({ error: "An account with this email already exists" });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const users = loadUsers();
-    const normalizedEmail = email.toLowerCase().trim();
     const trimmedName = name.trim();
-    users.push({ name: trimmedName, email: normalizedEmail, passwordHash });
-    saveUsers(users);
+    
+    await db.createUser({ name: trimmedName, email: normalizedEmail, passwordHash });
 
-    const sessionToken = createSession(normalizedEmail, trimmedName);
+    const sessionToken = crypto.randomBytes(32).toString("hex");
+    await db.saveSession(sessionToken, { token: sessionToken, email: normalizedEmail, name: trimmedName, createdAt: Date.now() });
     res.cookie(SESSION_COOKIE, sessionToken, { httpOnly: true, maxAge: SESSION_MAX_AGE, sameSite: "lax" });
 
     console.log(`[Auth] New user signed up: ${normalizedEmail}`);
@@ -223,40 +114,134 @@ async function startServer() {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
-    const user = findUser(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await db.findUser(normalizedEmail);
     if (!user) return res.status(401).json({ error: "No account found with this email" });
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return res.status(401).json({ error: "Incorrect password" });
 
-    const sessionToken = createSession(user.email, user.name);
+    const sessionToken = crypto.randomBytes(32).toString("hex");
+    await db.saveSession(sessionToken, { token: sessionToken, email: user.email, name: user.name, createdAt: Date.now() });
     res.cookie(SESSION_COOKIE, sessionToken, { httpOnly: true, maxAge: SESSION_MAX_AGE, sameSite: "lax" });
 
     console.log(`[Auth] User logged in: ${user.email}`);
     res.json({ success: true, name: user.name, email: user.email });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     const token = req.cookies?.[SESSION_COOKIE];
-    if (token) deleteSession(token);
+    if (token) await db.deleteSession(token);
     res.clearCookie(SESSION_COOKIE);
     res.json({ success: true });
   });
 
-  app.get("/api/auth/me", (req, res) => {
-    const session = getCurrentSession(req);
+  app.get("/api/auth/me", async (req, res) => {
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
-    res.json({ name: session.name, email: session.email });
+    const user = await db.findUser(session.email);
+    res.json({ name: session.name, email: session.email, photo: user?.photo });
   });
 
-  app.get("/api/auth/exists", (req, res) => {
+  app.get("/api/auth/exists", async (req, res) => {
     const email = req.query.email as string;
     if (!email) return res.status(400).json({ error: "Email required" });
-    res.json({ exists: !!findUser(email) });
+    const user = await db.findUser(email);
+    res.json({ exists: !!user });
   });
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // ── Sync endpoints ──────────────────────────────────────────────────────────
+
+  app.get("/api/sync/get", async (req, res) => {
+    const session = await getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const email = session.email;
+      const meals = await db.getUserMeals(email);
+      const goals = await db.getUserGoals(email);
+      const metrics = await db.getUserMetrics(email);
+      res.json({ meals, goals, metrics });
+    } catch (err: any) {
+      console.error("[Sync] Get error:", err.message);
+      res.status(500).json({ error: "Failed to fetch user data" });
+    }
+  });
+
+  app.post("/api/sync/meals", async (req, res) => {
+    const session = await getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const meal = req.body;
+      if (!meal || !meal.id) return res.status(400).json({ error: "Meal object with id required" });
+      await db.saveUserMeal(session.email, meal);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Sync] Save meal error:", err.message);
+      res.status(500).json({ error: "Failed to save meal" });
+    }
+  });
+
+  app.delete("/api/sync/meals/:id", async (req, res) => {
+    const session = await getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const success = await db.deleteUserMeal(session.email, req.params.id);
+      if (!success) return res.status(404).json({ error: "Meal not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Sync] Delete meal error:", err.message);
+      res.status(500).json({ error: "Failed to delete meal" });
+    }
+  });
+
+  app.post("/api/sync/goals", async (req, res) => {
+    const session = await getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const goals = req.body;
+      await db.saveUserGoals(session.email, goals);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Sync] Save goals error:", err.message);
+      res.status(500).json({ error: "Failed to save goals" });
+    }
+  });
+
+  app.post("/api/sync/metrics", async (req, res) => {
+    const session = await getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const metrics = req.body;
+      await db.saveUserMetrics(session.email, metrics);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Sync] Save metrics error:", err.message);
+      res.status(500).json({ error: "Failed to save metrics" });
+    }
+  });
+
+  app.post("/api/sync/profile", async (req, res) => {
+    const session = await getCurrentSession(req);
+    if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const { photo } = req.body;
+      if (photo === undefined) return res.status(400).json({ error: "photo is required" });
+      await db.updateUserPhoto(session.email, photo);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Sync] Update profile photo error:", err.message);
+      res.status(500).json({ error: "Failed to update profile photo" });
+    }
   });
 
   // ── Gemini AI endpoints ────────────────────────────────────────────────────
@@ -665,12 +650,12 @@ Return ONLY a JSON object with this exact structure:
   });
 
   // ── Recipe endpoints ────────────────────────────────────────────────────────
-  app.get("/api/recipes", (req, res) => {
-    res.json(loadRecipes());
+  app.get("/api/recipes", async (req, res) => {
+    res.json(await loadRecipes());
   });
 
-  app.post("/api/recipes", (req, res) => {
-    const session = getCurrentSession(req);
+  app.post("/api/recipes", async (req, res) => {
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
 
     const newRecipe = req.body;
@@ -678,7 +663,6 @@ Return ONLY a JSON object with this exact structure:
       return res.status(400).json({ error: "Recipe title is required" });
     }
 
-    const recipes = loadRecipes();
     // Add author details if not already present
     const enrichedRecipe = {
       ...newRecipe,
@@ -688,44 +672,32 @@ Return ONLY a JSON object with this exact structure:
       createdBy: session.email,
     };
 
-    recipes.unshift(enrichedRecipe);
-    saveRecipes(recipes);
+    await saveRecipe(enrichedRecipe);
     console.log(`[Recipes] New recipe uploaded by user ${session.email}: ${enrichedRecipe.title}`);
     res.json(enrichedRecipe);
   });
 
-  app.delete("/api/recipes/:id", (req, res) => {
-    const session = getCurrentSession(req);
+  app.delete("/api/recipes/:id", async (req, res) => {
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
 
     const { id } = req.params;
-    const recipes = loadRecipes();
-    const recipeIndex = recipes.findIndex(r => r.id.toString() === id.toString());
-
-    if (recipeIndex === -1) {
-      return res.status(404).json({ error: "Recipe not found" });
+    const success = await db.deleteRecipe(id, session.email);
+    if (!success) {
+      return res.status(404).json({ error: "Recipe not found or you are not authorized to delete it" });
     }
 
-    const deletedRecipe = recipes[recipeIndex];
-
-    // Enforce that delete is only allowed for the user who uploaded it
-    if (deletedRecipe.createdBy && deletedRecipe.createdBy.toLowerCase() !== session.email.toLowerCase()) {
-      return res.status(403).json({ error: "You can only delete recipes that you uploaded" });
-    }
-
-    recipes.splice(recipeIndex, 1);
-    saveRecipes(recipes);
-    console.log(`[Recipes] Recipe deleted: ${deletedRecipe.title} by user ${session.email}`);
+    console.log(`[Recipes] Recipe deleted: ${id} by user ${session.email}`);
     res.json({ success: true });
   });
 
   // ── Comment endpoints ───────────────────────────────────────────────────────
-  app.get("/api/comments", (req, res) => {
-    res.json(loadComments());
+  app.get("/api/comments", async (req, res) => {
+    res.json(await loadComments());
   });
 
-  app.post("/api/comments", (req, res) => {
-    const session = getCurrentSession(req);
+  app.post("/api/comments", async (req, res) => {
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
 
     const { recipeId, text } = req.body;
@@ -733,7 +705,6 @@ Return ONLY a JSON object with this exact structure:
       return res.status(400).json({ error: "Recipe ID and text are required" });
     }
 
-    const comments = loadComments();
     const newComment = {
       id: Math.random().toString(36).substring(7),
       recipeId: recipeId.toString(),
@@ -742,15 +713,14 @@ Return ONLY a JSON object with this exact structure:
       author: session.name
     };
 
-    comments.unshift(newComment);
-    saveComments(comments);
+    await saveComment(newComment);
     console.log(`[Comments] New comment added by ${session.email} on recipe ${recipeId}`);
     res.json(newComment);
   });
 
   // Google Auth URL — requires active session
-  app.get("/api/auth/url", (req, res) => {
-    const session = getCurrentSession(req);
+  app.get("/api/auth/url", async (req, res) => {
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -820,7 +790,7 @@ Return ONLY a JSON object with this exact structure:
       });
 
       // Store tokens keyed by user email — no more single global token
-      setUserToken(userEmail, response.data);
+      await setUserToken(userEmail, response.data);
       console.log(`[OAuth] Tokens stored for user: ${userEmail}`);
 
       res.send(`
@@ -849,9 +819,9 @@ Return ONLY a JSON object with this exact structure:
 
   // Debug endpoint — shows raw Google Fit response
   app.get("/api/watch/debug", async (req, res) => {
-    const session = getCurrentSession(req);
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
-    const userToken = getUserToken(session.email);
+    const userToken = await getUserToken(session.email);
     if (!userToken) return res.status(401).json({ error: "Not connected to Google Fit" });
     try {
       const startOfDay = Date.now() - (24 * 60 * 60 * 1000);
@@ -877,18 +847,18 @@ Return ONLY a JSON object with this exact structure:
   });
 
   // Disconnect Google Fit for the current user
-  app.post("/api/watch/disconnect", (req, res) => {
-    const session = getCurrentSession(req);
+  app.post("/api/watch/disconnect", async (req, res) => {
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
-    deleteUserToken(session.email);
+    await deleteUserToken(session.email);
     console.log(`[OAuth] Disconnected Google Fit for user: ${session.email}`);
     res.json({ success: true });
   });
 
   app.get("/api/watch/sync", async (req, res) => {
-    const session = getCurrentSession(req);
+    const session = await getCurrentSession(req);
     if (!session) return res.status(401).json({ error: "Not authenticated" });
-    let userToken = getUserToken(session.email);
+    let userToken = await getUserToken(session.email);
     if (!userToken) return res.status(401).json({ error: "Not connected" });
 
     const fetchData = async (token: string) => {
@@ -927,7 +897,7 @@ Return ONLY a JSON object with this exact structure:
                     grant_type: "refresh_token",
                 });
                 userToken = { ...userToken, ...refreshRes.data };
-                setUserToken(session.email, userToken);
+                await setUserToken(session.email, userToken);
                 fitnessRes = await fetchData(userToken.access_token);
             } else {
                 throw error;
